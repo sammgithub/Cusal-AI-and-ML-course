@@ -1,0 +1,907 @@
+---
+title: "SI"
+author: "Seraj Mostafa"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r}
+# install.packages('anytime')
+```
+
+# Synthetic data
+
+```{r, fig.height=8, fig.width=16}
+sd <- read.csv("syn_data.csv")
+str(sd)
+names(sd)
+colSums(is.na(sd))
+plot.ts(sd)
+```
+
+# SEA-ICE data
+
+```{r, Warning=F, message=F, fig.height=8, fig.width=16}
+library(anytime)
+sidf <- read.csv("SeaIce-1979_2021.csv")
+sidf$Date <- anydate(sidf$Date)
+
+library(reshape)
+newdf <- melt(sidf, id.vars = 'Date') #, variable.name = 'series'
+
+library(ggplot2)
+ggplot(newdf, aes(Date,value, group = variable)) + geom_line()+facet_grid(variable ~ ., scales = "free_y")
+```
+                    
+```{r, message=F}
+library(rEDM)
+```
+
+
+```{r}
+ts <- sidf$sea_ice_extent
+lib <- c(1, length(ts))
+pred <- c(1, length(ts))
+simplex_output <- simplex(ts, lib, pred, silent = TRUE)
+plot(simplex_output$E, simplex_output$rho, type = "l", xlab = "Embedding Dimension (E)", 
+    ylab = "Forecast Skill (rho)")
+```
+
+<!-- ```{r} -->
+<!-- smap_output <- list(s_map(ts, lib, pred, E = 2, silent = TRUE), s_map(ts, lib, pred, E = 6, silent = TRUE)) -->
+
+<!-- plot(smap_output[[1]]$theta, smap_output[[1]]$rho, type = "l", xlim = c(0, 4),  -->
+<!--     xlab = "Nonlinearity (theta)", ylab = "Forecast Skill (rho)") -->
+<!-- plot(smap_output[[2]]$theta, smap_output[[2]]$rho, type = "l", xlim = c(0, 4),     xlab = "Nonlinearity (theta)", ylab = "Forecast Skill (rho)") -->
+<!-- ``` -->
+
+
+
+```{r}
+smap_output <- list(s_map(ts, lib, pred, E = 2, silent = TRUE),
+                    s_map(ts, lib, pred, E = 4, silent = TRUE),
+                    s_map(ts, lib, pred, E = 9, silent = TRUE))
+
+plot(smap_output[[1]]$theta, smap_output[[1]]$rho, type = "l", xlim = c(0, 4), xlab = "Nonlinearity (theta)", ylab = "Forecast Skill (rho)")
+plot(smap_output[[2]]$theta, smap_output[[2]]$rho, type = "l", xlim = c(0, 4), xlab = "Nonlinearity (theta)", ylab = "Forecast Skill (rho)")
+plot(smap_output[[3]]$theta, smap_output[[3]]$rho, type = "l", xlim = c(0, 4), xlab = "Nonlinearity (theta)", ylab = "Forecast Skill (rho)")
+
+#s_map(ts, lib, pred, E = 5, silent = TRUE),                    
+#s_map(ts, lib, pred, E = 3, silent = TRUE),
+#s_map(ts, lib, pred, E = 7, silent = TRUE),
+                    #s_map(ts, lib, pred, E = 8, silent = TRUE),
+                    #s_map(ts, lib, pred, E = 9, silent = TRUE),
+                    #s_map(ts, lib, pred, E = 10, silent = TRUE))
+                    #s_map(ts, lib, pred, E = 1, silent = TRUE)
+
+#plot(smap_output[[1]]$theta, smap_output[[1]]$rho, type = "l", xlim = c(0, 4), xlab = "Nonlinearity (theta)", ylab = "Forecast Skill (rho)")
+
+#plot(smap_output[[3]]$theta, smap_output[[3]]$rho, type = "l", xlim = c(0, 4), xlab = "Nonlinearity (theta)", ylab = "Forecast Skill (rho)")
+
+#plot(smap_output[[5]]$theta, smap_output[[5]]$rho, type = "l", xlim = c(0, 4), xlab = "Nonlinearity (theta)", ylab = "Forecast Skill (rho)")
+
+#plot(smap_output[[7]]$theta, smap_output[[7]]$rho, type = "l", xlim = c(0, 4), xlab = "Nonlinearity (theta)", ylab = "Forecast Skill (rho)")
+#plot(smap_output[[8]]$theta, smap_output[[8]]$rho, type = "l", xlim = c(0, 4), xlab = "Nonlinearity (theta)", ylab = "Forecast Skill (rho)")
+#plot(smap_output[[9]]$theta, smap_output[[9]]$rho, type = "l", xlim = c(0, 4), xlab = "Nonlinearity (theta)", ylab = "Forecast Skill (rho)")
+#plot(smap_output[[10]]$theta, smap_output[[10]]$rho, type = "l", xlim = c(0, 4), xlab = "Nonlinearity (theta)", ylab = "Forecast Skill (rho)")
+
+```
+
+
+```{r}
+vars <- colnames(sidf[2:11])
+n <- NROW(sidf)
+ccm_rho_matrix <- matrix(NA, nrow = length(vars), ncol = length(vars), dimnames = list(vars, 
+    vars))
+
+for (ccm_from in vars) {
+    for (ccm_to in vars[vars != ccm_from]) {
+        out_temp <- ccm(sidf, E = 2, lib_column = ccm_from, target_column = ccm_to, 
+            lib_sizes = n, replace = FALSE, silent = TRUE)
+        ccm_rho_matrix[ccm_from, ccm_to] <- out_temp$rho
+    }
+}
+```
+
+
+```{r}
+#head(ccm_rho_matrix)
+ccm_rho_matrix
+```
+
+
+
+```{r}
+corr_matrix <- array(NA, dim = c(length(vars), length(vars)), dimnames = list(vars, 
+    vars))
+
+for (ccm_from in vars) {
+    for (ccm_to in vars[vars != ccm_from]) {
+        cf_temp <- ccf(sidf[, ccm_from], sidf[, ccm_to], type = "correlation", 
+            lag.max = 12, plot = FALSE)$acf
+        corr_matrix[ccm_from, ccm_to] <- max(abs(cf_temp))
+    }
+}
+```
+
+
+
+```{r}
+corr_matrix
+```
+
+## --------------- ALL Variable vs SEA_ICE
+
+
+```{r, fig.height=4, fig.width=6}
+seaIce_snowfall <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "sea_ice_extent", target_column = "wind_10m", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+snowfall_seaIce <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "wind_10m", target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+
+seaIce_snowfall_means <- ccm_means(seaIce_snowfall)
+snowfall_seaIce_means <- ccm_means(snowfall_seaIce)
+
+plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l", xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0, 1), lwd = 2)
+lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue", lwd = 2)
+legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> wind_10m", "seaice <- wind_10m"), inset = 0.02, bty = "n", cex = 1) #pch = 2, 
+
+dev.copy(jpeg,filename="seaice ~ wind_10m.jpg")
+dev.off ()
+```
+
+
+```{r, fig.height=4, fig.width=6}
+seaIce_snowfall <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "sea_ice_extent", target_column = "specific_humidity", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+snowfall_seaIce <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "specific_humidity", 
+    target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300, 
+    silent = TRUE)
+
+seaIce_snowfall_means <- ccm_means(seaIce_snowfall)
+snowfall_seaIce_means <- ccm_means(snowfall_seaIce)
+
+plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l", xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0, 1), lwd = 2)
+lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue", lwd = 2)
+legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> humidity", "seaice <- humidity"), inset = 0.02, bty = "n", cex = 1)
+
+dev.copy(jpeg,filename="seaice ~ humidity.jpg")
+dev.off ()
+```
+
+
+```{r, fig.height=4, fig.width=6}
+seaIce_snowfall <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "sea_ice_extent", target_column = "snowfall", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+snowfall_seaIce <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "snowfall", target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+
+seaIce_snowfall_means <- ccm_means(seaIce_snowfall)
+snowfall_seaIce_means <- ccm_means(snowfall_seaIce)
+
+plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l", xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0, 1), lwd = 2)
+lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue", lwd = 2)
+legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> snowfall", "seaIce <- snowfall"), inset = 0.02, bty = "n", cex = 1)
+
+dev.copy(jpeg,filename="seaice ~ snowfall.jpg")
+dev.off ()
+```
+
+
+```{r, fig.height=4, fig.width=6}
+seaIce_snowfall <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "sea_ice_extent", target_column = "LW_down", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+snowfall_seaIce <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "LW_down", target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+
+seaIce_snowfall_means <- ccm_means(seaIce_snowfall)
+snowfall_seaIce_means <- ccm_means(snowfall_seaIce)
+
+plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l", xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0, 1), lwd = 2)
+lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue", 
+    lwd = 2)
+legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> LW_down", "seaIce <- LW_down"), inset = 0.02, bty = "n", cex = 1)
+
+dev.copy(jpeg,filename="seaice ~ LW_down.jpg")
+dev.off ()
+```
+
+
+```{r, fig.height=4, fig.width=6}
+seaIce_snowfall <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "sea_ice_extent", target_column = "SW_down", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+snowfall_seaIce <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "SW_down", target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+
+seaIce_snowfall_means <- ccm_means(seaIce_snowfall)
+snowfall_seaIce_means <- ccm_means(snowfall_seaIce)
+
+plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l", xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0, 1), lwd = 2)
+lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue", 
+    lwd = 2)
+legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> SW_down", "seaIce <- SW_down"), inset = 0.02, bty = "n", cex = 1)
+
+dev.copy(jpeg,filename="seaice ~ SW_down.jpg")
+dev.off ()
+```
+
+
+```{r, fig.height=4, fig.width=6}
+seaIce_snowfall <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "sea_ice_extent", target_column = "rainfall", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+snowfall_seaIce <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "rainfall", target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+
+seaIce_snowfall_means <- ccm_means(seaIce_snowfall)
+snowfall_seaIce_means <- ccm_means(snowfall_seaIce)
+
+plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l", xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0, 1), lwd = 2)
+lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue", lwd = 2)
+legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> rainfall", "seaIce <- rainfall"), inset = 0.02, bty = "n", cex = 1)
+
+dev.copy(jpeg,filename="seaice ~ rainfall.jpg")
+dev.off ()
+```
+
+```{r, fig.height=4, fig.width=6}
+seaIce_snowfall <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "sea_ice_extent", target_column = "snowfall", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+snowfall_seaIce <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "snowfall", target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+
+seaIce_snowfall_means <- ccm_means(seaIce_snowfall)
+snowfall_seaIce_means <- ccm_means(snowfall_seaIce)
+
+plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l", xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0, 1), lwd = 2)
+lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue", lwd = 2)
+legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> snowfall", "seaIce <- snowfall"), inset = 0.02, bty = "n", cex = 1)
+
+dev.copy(jpeg,filename="seaice ~ snowfall.jpg")
+dev.off ()
+```
+
+```{r, fig.height=4, fig.width=6}
+seaIce_snowfall <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "sea_ice_extent", target_column = "sst", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+snowfall_seaIce <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "sst", target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+
+seaIce_snowfall_means <- ccm_means(seaIce_snowfall)
+snowfall_seaIce_means <- ccm_means(snowfall_seaIce)
+
+plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l", xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0, 1), lwd = 2)
+lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue", lwd = 2)
+legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> sst", "seaIce <- sst"), inset = 0.02, bty = "n", cex = 1)
+
+dev.copy(jpeg,filename="seaice ~ sst.jpg")
+dev.off ()
+```
+
+
+```{r, fig.height=4, fig.width=6}
+seaIce_snowfall <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "sea_ice_extent", target_column = "t2m", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+snowfall_seaIce <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "t2m", target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+
+seaIce_snowfall_means <- ccm_means(seaIce_snowfall)
+snowfall_seaIce_means <- ccm_means(snowfall_seaIce)
+
+plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l", xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0, 1), lwd = 2)
+lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue", lwd = 2)
+legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> t2m", "seaIce <- t2m"), inset = 0.02, bty = "n", cex = 1)
+
+dev.copy(jpeg,filename="seaice ~ t2m.jpg")
+dev.off ()
+```
+
+```{r, fig.height=4, fig.width=6}
+seaIce_snowfall <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "sea_ice_extent", target_column = "surface_pressure", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+snowfall_seaIce <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "surface_pressure", target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+
+seaIce_snowfall_means <- ccm_means(seaIce_snowfall)
+snowfall_seaIce_means <- ccm_means(snowfall_seaIce)
+
+plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l", xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0, 1), lwd = 2)
+lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue", lwd = 2)
+legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> suface_pressure", "seaIce <- suface_pressure"), inset = 0.02, bty = "n", cex = 1)
+
+dev.copy(jpeg,filename="seaice ~ surface_pressure.jpg")
+dev.off ()
+```
+
+
+## ---------------------------------------------for SYNTHETIC DATA-------------------------------------------------------
+
+
+```{r, fig.height=4, fig.width=6}
+sts <- sd$wages
+lib <- c(1, length(sts))
+pred <- c(1, length(sts))
+simplex_output <- simplex(sts, lib, pred, silent = TRUE)
+plot(simplex_output$E, simplex_output$rho, type = "l", xlab = "Embedding Dimension (E)", 
+    ylab = "Forecast Skill (rho)")
+```
+<!-- ```{r} -->
+<!-- smap_output <- list(s_map(ts, lib, pred, E = 2, silent = TRUE), s_map(ts, lib, pred, E = 6, silent = TRUE)) -->
+
+<!-- plot(smap_output[[1]]$theta, smap_output[[1]]$rho, type = "l", xlim = c(0, 4),  -->
+<!--     xlab = "Nonlinearity (theta)", ylab = "Forecast Skill (rho)") -->
+<!-- plot(smap_output[[2]]$theta, smap_output[[2]]$rho, type = "l", xlim = c(0, 4),     xlab = "Nonlinearity (theta)", ylab = "Forecast Skill (rho)") -->
+<!-- ``` -->
+
+
+
+```{r, fig.height=4, fig.width=6}
+smap_output <- list(s_map(sts, lib, pred, E = 3, silent = TRUE),
+                    s_map(sts, lib, pred, E = 4, silent = TRUE),
+                    s_map(sts, lib, pred, E = 7, silent = TRUE))
+
+plot(smap_output[[1]]$theta, smap_output[[1]]$rho, type = "l", xlim = c(0, 4), xlab = "Nonlinearity (theta)", ylab = "Forecast Skill (rho)")
+plot(smap_output[[2]]$theta, smap_output[[2]]$rho, type = "l", xlim = c(0, 4), xlab = "Nonlinearity (theta)", ylab = "Forecast Skill (rho)")
+plot(smap_output[[3]]$theta, smap_output[[3]]$rho, type = "l", xlim = c(0, 4), xlab = "Nonlinearity (theta)", ylab = "Forecast Skill (rho)")
+```
+
+
+```{r}
+vars <- colnames(sd[2:8])
+n <- NROW(sd)
+ccm_rho_matrix_sd <- matrix(NA, nrow = length(vars), ncol = length(vars), dimnames = list(vars, 
+    vars))
+
+for (ccm_from in vars) {
+    for (ccm_to in vars[vars != ccm_from]) {
+        out_temp <- ccm(sd, E = 2, lib_column = ccm_from, target_column = ccm_to, 
+            lib_sizes = n, replace = FALSE, silent = TRUE)
+        ccm_rho_matrix_sd[ccm_from, ccm_to] <- out_temp$rho
+    }
+}
+```
+
+
+```{r}
+#head(ccm_rho_matrix)
+ccm_rho_matrix_sd
+```
+
+
+
+```{r}
+corr_matrix_sd <- array(NA, dim = c(length(vars), length(vars)), dimnames = list(vars, 
+    vars))
+
+for (ccm_from in vars) {
+    for (ccm_to in vars[vars != ccm_from]) {
+        cf_temp <- ccf(sd[, ccm_from], sd[, ccm_to], type = "correlation", 
+            lag.max = 12, plot = FALSE)$acf
+        corr_matrix_sd[ccm_from, ccm_to] <- max(abs(cf_temp))
+    }
+}
+```
+
+
+
+```{r}
+corr_matrix_sd
+```
+
+## --------------- ALL Variable vs SEA_ICE
+
+
+```{r, fig.height=4, fig.width=6}
+wag_paEdu <- ccm(sd, E = 7, random_libs = TRUE, lib_column = "wages", target_column = "parental_education", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+paEdu_wag <- ccm(sd, E = 7, random_libs = TRUE, lib_column = "parental_education", target_column = "wages", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+
+wag_paEdu_means <- ccm_means(wag_paEdu)
+paEdu_wag_means <- ccm_means(paEdu_wag)
+
+plot(wag_paEdu_means$lib_size, pmax(0, wag_paEdu_means$rho), type = "l", xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  1), lwd = 2)
+lines(paEdu_wag_means$lib_size, pmax(0, paEdu_wag_means$rho), col = "blue", lwd = 2)
+legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("wages -> parent_education", "wages <- parent_education"), inset = 0.02, bty = "n", cex = 1)
+
+dev.copy(jpeg,filename="wages ~ parent_education.jpg")
+dev.off ()
+```
+
+```{r, fig.height=4, fig.width=6}
+wag_paEdu <- ccm(sd, E = 7, random_libs = TRUE, lib_column = "wages", target_column = "family_background", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+paEdu_wag <- ccm(sd, E = 7, random_libs = TRUE, lib_column = "family_background", target_column = "wages", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+
+wag_paEdu_means <- ccm_means(wag_paEdu)
+paEdu_wag_means <- ccm_means(paEdu_wag)
+
+plot(wag_paEdu_means$lib_size, pmax(0, wag_paEdu_means$rho), type = "l", xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  1), lwd = 2)
+lines(paEdu_wag_means$lib_size, pmax(0, paEdu_wag_means$rho), col = "blue", lwd = 2)
+legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("wages -> family_background", "wages <- family_background"), inset = 0.02, bty = "n", cex = 1)
+
+dev.copy(jpeg,filename="wages ~ family_background.jpg")
+dev.off ()
+```
+
+```{r, fig.height=4, fig.width=6}
+wag_paEdu <- ccm(sd, E = 7, random_libs = TRUE, lib_column = "wages", target_column = "family_network", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+paEdu_wag <- ccm(sd, E = 7, random_libs = TRUE, lib_column = "family_network", target_column = "wages", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+
+wag_paEdu_means <- ccm_means(wag_paEdu)
+paEdu_wag_means <- ccm_means(paEdu_wag)
+
+plot(wag_paEdu_means$lib_size, pmax(0, wag_paEdu_means$rho), type = "l", xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  1), lwd = 2)
+lines(paEdu_wag_means$lib_size, pmax(0, paEdu_wag_means$rho), col = "blue", lwd = 2)
+legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("wages -> family_network", "wages <- family_network"), inset = 0.02, bty = "n", cex = 1)
+
+dev.copy(jpeg,filename="wages ~ family_network.jpg")
+dev.off ()
+```
+
+```{r, fig.height=4, fig.width=6}
+wag_paEdu <- ccm(sd, E = 7, random_libs = TRUE, lib_column = "wages", target_column = "health", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+paEdu_wag <- ccm(sd, E = 7, random_libs = TRUE, lib_column = "health", target_column = "wages", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+
+wag_paEdu_means <- ccm_means(wag_paEdu)
+paEdu_wag_means <- ccm_means(paEdu_wag)
+
+plot(wag_paEdu_means$lib_size, pmax(0, wag_paEdu_means$rho), type = "l", xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  1), lwd = 2)
+lines(paEdu_wag_means$lib_size, pmax(0, paEdu_wag_means$rho), col = "blue", lwd = 2)
+legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("wages -> health", "wages <- health"), inset = 0.02, bty = "n", cex = 1)
+
+dev.copy(jpeg,filename="wages ~ health.jpg")
+dev.off ()
+```
+
+
+```{r, fig.height=4, fig.width=6}
+wag_paEdu <- ccm(sd, E = 7, random_libs = TRUE, lib_column = "wages", target_column = "education", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+paEdu_wag <- ccm(sd, E = 7, random_libs = TRUE, lib_column = "education", target_column = "wages", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+
+wag_paEdu_means <- ccm_means(wag_paEdu)
+paEdu_wag_means <- ccm_means(paEdu_wag)
+
+plot(wag_paEdu_means$lib_size, pmax(0, wag_paEdu_means$rho), type = "l", xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  1), lwd = 2)
+lines(paEdu_wag_means$lib_size, pmax(0, paEdu_wag_means$rho), col = "blue", lwd = 2)
+legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("wages -> education", "wages <- education"), inset = 0.02, bty = "n", cex = 1)
+
+dev.copy(jpeg,filename="wages ~ education.jpg")
+dev.off ()
+```
+
+```{r, fig.height=4, fig.width=6}
+wag_paEdu <- ccm(sd, E = 7, random_libs = TRUE, lib_column = "wages", target_column = "better_jobs", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+paEdu_wag <- ccm(sd, E = 7, random_libs = TRUE, lib_column = "better_jobs", target_column = "wages", lib_sizes = seq(10, 75, by = 5), num_samples = 300, silent = TRUE)
+
+wag_paEdu_means <- ccm_means(wag_paEdu)
+paEdu_wag_means <- ccm_means(paEdu_wag)
+
+plot(wag_paEdu_means$lib_size, pmax(0, wag_paEdu_means$rho), type = "l", xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  1), lwd = 2)
+lines(paEdu_wag_means$lib_size, pmax(0, paEdu_wag_means$rho), col = "blue", lwd = 2)
+legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("wages -> better_jobs", "wages <- better_jobs"), inset = 0.02, bty = "n", cex = 1)
+
+dev.copy(jpeg,filename="wages ~ better_jobs.jpg")
+dev.off ()
+```
+
+
+
+<!-- ```{r} -->
+<!-- seaIce_snowfall <- ccm(sidf, E = 1, random_libs = TRUE, lib_column = "sea_ice_extent", -->
+<!--     target_column = "snowfall", lib_sizes = seq(10, 75, by = 5), num_samples = 300, -->
+<!--     silent = TRUE) -->
+<!-- snowfall_seaIce <- ccm(sidf, E = 1, random_libs = TRUE, lib_column = "snowfall", -->
+<!--     target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300, -->
+<!--     silent = TRUE) -->
+
+<!-- seaIce_snowfall_means <- ccm_means(seaIce_snowfall) -->
+<!-- snowfall_seaIce_means <- ccm_means(snowfall_seaIce) -->
+
+<!-- plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l", -->
+<!--     xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0, -->
+<!--         1), lwd = 2) -->
+<!-- lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue", -->
+<!--     lwd = 2) -->
+<!-- legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> snowfall", -->
+<!--     "snowfall -> seaice"), inset = 0.02, bty = "n", cex = 0.8) -->
+
+<!-- #abline(h = 0.8, lty = 3) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- seaIce_snowfall <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "sea_ice_extent",  -->
+<!--     target_column = "snowfall", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+<!-- snowfall_seaIce <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "snowfall",  -->
+<!--     target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+
+<!-- seaIce_snowfall_means <- ccm_means(seaIce_snowfall) -->
+<!-- snowfall_seaIce_means <- ccm_means(snowfall_seaIce) -->
+
+<!-- plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l",  -->
+<!--     xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  -->
+<!--         1), lwd = 2) -->
+<!-- lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue",  -->
+<!--     lwd = 2) -->
+<!-- legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> snowfall",  -->
+<!--     "snowfall -> seaice"), inset = 0.02, bty = "n", cex = 0.8) -->
+
+<!-- #abline(h = 0.8, lty = 3) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- seaIce_snowfall <- ccm(sidf, E = 3, random_libs = TRUE, lib_column = "sea_ice_extent",  -->
+<!--     target_column = "snowfall", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+<!-- snowfall_seaIce <- ccm(sidf, E = 3, random_libs = TRUE, lib_column = "snowfall",  -->
+<!--     target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+
+<!-- seaIce_snowfall_means <- ccm_means(seaIce_snowfall) -->
+<!-- snowfall_seaIce_means <- ccm_means(snowfall_seaIce) -->
+
+<!-- plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l",  -->
+<!--     xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  -->
+<!--         1), lwd = 2) -->
+<!-- lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue",  -->
+<!--     lwd = 2) -->
+<!-- legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> snowfall",  -->
+<!--     "snowfall -> seaice"), inset = 0.02, bty = "n", cex = 0.8) -->
+
+<!-- #abline(h = 0.8, lty = 3) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- seaIce_snowfall <- ccm(sidf, E = 4, random_libs = TRUE, lib_column = "sea_ice_extent",  -->
+<!--     target_column = "snowfall", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+<!-- snowfall_seaIce <- ccm(sidf, E = 4, random_libs = TRUE, lib_column = "snowfall",  -->
+<!--     target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+
+<!-- seaIce_snowfall_means <- ccm_means(seaIce_snowfall) -->
+<!-- snowfall_seaIce_means <- ccm_means(snowfall_seaIce) -->
+
+<!-- plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l",  -->
+<!--     xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  -->
+<!--         1), lwd = 2) -->
+<!-- lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue",  -->
+<!--     lwd = 2) -->
+<!-- legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> snowfall",  -->
+<!--     "snowfall -> seaice"), inset = 0.02, bty = "n", cex = 0.8) -->
+
+<!-- #abline(h = 0.8, lty = 3) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- seaIce_snowfall <- ccm(sidf, E = 5, random_libs = TRUE, lib_column = "sea_ice_extent",  -->
+<!--     target_column = "snowfall", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+<!-- snowfall_seaIce <- ccm(sidf, E = 5, random_libs = TRUE, lib_column = "snowfall",  -->
+<!--     target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+
+<!-- seaIce_snowfall_means <- ccm_means(seaIce_snowfall) -->
+<!-- snowfall_seaIce_means <- ccm_means(snowfall_seaIce) -->
+
+<!-- plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l",  -->
+<!--     xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  -->
+<!--         1), lwd = 2) -->
+<!-- lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue",  -->
+<!--     lwd = 2) -->
+<!-- legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> snowfall",  -->
+<!--     "snowfall -> seaice"), inset = 0.02, bty = "n", cex = 0.8) -->
+
+<!-- #abline(h = 0.8, lty = 3) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- seaIce_snowfall <- ccm(sidf, E = 6, random_libs = TRUE, lib_column = "sea_ice_extent",  -->
+<!--     target_column = "snowfall", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+<!-- snowfall_seaIce <- ccm(sidf, E = 6, random_libs = TRUE, lib_column = "snowfall",  -->
+<!--     target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+
+<!-- seaIce_snowfall_means <- ccm_means(seaIce_snowfall) -->
+<!-- snowfall_seaIce_means <- ccm_means(snowfall_seaIce) -->
+
+<!-- plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l",  -->
+<!--     xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  -->
+<!--         1), lwd = 2) -->
+<!-- lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue",  -->
+<!--     lwd = 2) -->
+<!-- legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> snowfall",  -->
+<!--     "snowfall -> seaice"), inset = 0.02, bty = "n", cex = 0.8) -->
+
+<!-- #abline(h = 0.8, lty = 3) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- seaIce_snowfall <- ccm(sidf, E = 7, random_libs = TRUE, lib_column = "sea_ice_extent",  -->
+<!--     target_column = "snowfall", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+<!-- snowfall_seaIce <- ccm(sidf, E = 7, random_libs = TRUE, lib_column = "snowfall",  -->
+<!--     target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+
+<!-- seaIce_snowfall_means <- ccm_means(seaIce_snowfall) -->
+<!-- snowfall_seaIce_means <- ccm_means(snowfall_seaIce) -->
+
+<!-- plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l",  -->
+<!--     xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  -->
+<!--         1), lwd = 2) -->
+<!-- lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue",  -->
+<!--     lwd = 2) -->
+<!-- legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> snowfall",  -->
+<!--     "snowfall -> seaice"), inset = 0.02, bty = "n", cex = 0.8) -->
+
+<!-- #abline(h = 0.8, lty = 3) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- seaIce_snowfall <- ccm(sidf, E = 8, random_libs = TRUE, lib_column = "sea_ice_extent",  -->
+<!--     target_column = "snowfall", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+<!-- snowfall_seaIce <- ccm(sidf, E = 8, random_libs = TRUE, lib_column = "snowfall",  -->
+<!--     target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+
+<!-- seaIce_snowfall_means <- ccm_means(seaIce_snowfall) -->
+<!-- snowfall_seaIce_means <- ccm_means(snowfall_seaIce) -->
+
+<!-- plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l",  -->
+<!--     xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  -->
+<!--         1), lwd = 2) -->
+<!-- lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue",  -->
+<!--     lwd = 2) -->
+<!-- legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> snowfall",  -->
+<!--     "snowfall -> seaice"), inset = 0.02, bty = "n", cex = 0.8) -->
+
+<!-- #abline(h = 0.8, lty = 3) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- seaIce_snowfall <- ccm(sidf, E = 9, random_libs = TRUE, lib_column = "sea_ice_extent",  -->
+<!--     target_column = "snowfall", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+<!-- snowfall_seaIce <- ccm(sidf, E = 9, random_libs = TRUE, lib_column = "snowfall",  -->
+<!--     target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+
+<!-- seaIce_snowfall_means <- ccm_means(seaIce_snowfall) -->
+<!-- snowfall_seaIce_means <- ccm_means(snowfall_seaIce) -->
+
+<!-- plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l",  -->
+<!--     xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  -->
+<!--         1), lwd = 2) -->
+<!-- lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue",  -->
+<!--     lwd = 2) -->
+<!-- legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> snowfall",  -->
+<!--     "snowfall -> seaice"), inset = 0.02, bty = "n", cex = 0.8) -->
+
+<!-- #abline(h = 0.8, lty = 3) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- seaIce_snowfall <- ccm(sidf, E = 10, random_libs = TRUE, lib_column = "sea_ice_extent",  -->
+<!--     target_column = "snowfall", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+<!-- snowfall_seaIce <- ccm(sidf, E = 10, random_libs = TRUE, lib_column = "snowfall",  -->
+<!--     target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+
+<!-- seaIce_snowfall_means <- ccm_means(seaIce_snowfall) -->
+<!-- snowfall_seaIce_means <- ccm_means(snowfall_seaIce) -->
+
+<!-- plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l",  -->
+<!--     xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  -->
+<!--         1), lwd = 2) -->
+<!-- lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue",  -->
+<!--     lwd = 2) -->
+<!-- legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> snowfall",  -->
+<!--     "snowfall -> seaice"), inset = 0.02, bty = "n", cex = 0.8) -->
+
+<!-- #abline(h = 0.8, lty = 3) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- seaIce_snowfall <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "surface_pressure",  -->
+<!--     target_column = "t2m", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+<!-- snowfall_seaIce <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "t2m",  -->
+<!--     target_column = "surface_pressure", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+
+<!-- seaIce_snowfall_means <- ccm_means(seaIce_snowfall) -->
+<!-- snowfall_seaIce_means <- ccm_means(snowfall_seaIce) -->
+
+<!-- plot(seaIce_snowfall_means$lib_size, pmax(0, seaIce_snowfall_means$rho), type = "l",  -->
+<!--     xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  -->
+<!--         1), lwd = 2) -->
+<!-- lines(snowfall_seaIce_means$lib_size, pmax(0, snowfall_seaIce_means$rho), col = "blue",  -->
+<!--     lwd = 2) -->
+<!-- legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("surface_pressure -> snowfall",  -->
+<!--     "snowfall -> surface_pressure"), inset = 0.02, bty = "n", cex = 0.8) -->
+
+<!-- #abline(h = 0.8, lty = 3) -->
+<!-- ``` -->
+
+
+
+<!-- ```{r} -->
+<!-- snow_rain <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "snowfall",  -->
+<!--     target_column = "rainfall", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+<!-- rain_snow <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "rainfall",  -->
+<!--     target_column = "snowfall", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+
+<!-- snow_rain_means <- ccm_means(snow_rain) -->
+<!-- rain_snow_means <- ccm_means(rain_snow) -->
+
+<!-- plot(snow_rain_means$lib_size, pmax(0, snow_rain_means$rho), type = "l",  -->
+<!--     xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  -->
+<!--         1), lwd = 2) -->
+<!-- lines(rain_snow_means$lib_size, pmax(0, rain_snow_means$rho), col = "blue",  -->
+<!--     lwd = 2) -->
+<!-- legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("rainfall -> snowfall",  -->
+<!--     "rainfall <- snowfall"), inset = 0.02, bty = "n", cex = 0.8) -->
+
+<!-- #abline(h = 0.25, lty = 3) -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- seaIce_surfPressure <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "sea_ice_extent",  -->
+<!--     target_column = "surface_pressure", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+<!-- surfPressure_seaIce <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "surface_pressure",  -->
+<!--     target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+
+<!-- seaIce_surfPressure_means <- ccm_means(seaIce_surfPressure) -->
+<!-- surfPressure_seaIce_means <- ccm_means(surfPressure_seaIce) -->
+
+<!-- plot(seaIce_surfPressure_means$lib_size, pmax(0, seaIce_surfPressure_means$rho), type = "l",  -->
+<!--     xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  -->
+<!--         1), lwd = 2) -->
+<!-- lines(surfPressure_seaIce_means$lib_size, pmax(0, surfPressure_seaIce_means$rho), col = "blue",  -->
+<!--     lwd = 2) -->
+<!-- legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> surfPressure",  -->
+<!--     "seaIce <- surfPressure"), inset = 0.02, bty = "n", cex = 0.8) -->
+
+<!-- #abline(h = 0.25, lty = 3) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- seaIce_spHumidity <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "sea_ice_extent",  -->
+<!--     target_column = "specific_humidity", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+<!-- spHumidity_seaIce <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "specific_humidity",  -->
+<!--     target_column = "sea_ice_extent", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+
+<!-- seaIce_spHumidity_means <- ccm_means(seaIce_spHumidity) -->
+<!-- spHumidity_seaIce_means <- ccm_means(spHumidity_seaIce) -->
+
+<!-- plot(seaIce_spHumidity_means$lib_size, pmax(0, seaIce_spHumidity_means$rho), type = "l",  -->
+<!--     xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  -->
+<!--         1), lwd = 2) -->
+<!-- lines(spHumidity_seaIce_means$lib_size, pmax(0, spHumidity_seaIce_means$rho), col = "blue",  -->
+<!--     lwd = 2) -->
+<!-- legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("seaIce -> Humidity",  -->
+<!--     "seaIce <- Humidity"), inset = 0.02, bty = "n", cex = 0.8) -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- sst_t2m <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "sst",  -->
+<!--     target_column = "t2m", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+<!-- t2m_sst <- ccm(sidf, E = 2, random_libs = TRUE, lib_column = "t2m",  -->
+<!--     target_column = "sst", lib_sizes = seq(10, 75, by = 5), num_samples = 300,  -->
+<!--     silent = TRUE) -->
+
+<!-- sst_t2m_means <- ccm_means(sst_t2m) -->
+<!-- t2m_sst_means <- ccm_means(t2m_sst) -->
+
+<!-- plot(sst_t2m_means$lib_size, pmax(0, sst_t2m_means$rho), type = "l",  -->
+<!--     xlab = "Library Size", ylab = "Cross Map Skill (rho)", col = "red", ylim = c(0,  -->
+<!--         1), lwd = 2) -->
+<!-- lines(t2m_sst_means$lib_size, pmax(0, t2m_sst_means$rho), col = "blue",  -->
+<!--     lwd = 2) -->
+<!-- legend(x = "bottomright", col = c("red", "blue"), lwd = 2, legend = c("sst -> t2m",  -->
+<!--     "sst <- t2m"), inset = 0.02, bty = "n", cex = 0.8) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- num_surr <- 50 -->
+<!-- surr_rain <- make_surrogate_data(sidf$rainfall, method = "seasonal",  -->
+<!--     T_period = 12, num_surr = num_surr) -->
+<!-- surr_snow <- make_surrogate_data(sidf$snowfall, method = "seasonal",  -->
+<!--     T_period = 12, num_surr = num_surr) -->
+
+
+<!-- ccm_rho_surr <- data.frame(rain = numeric(num_surr), snow = numeric(num_surr)) -->
+
+<!-- for (i in 1:num_surr) { -->
+<!--     ccm_rho_surr$rainfall[i] <- ccm(cbind(sidf$sea_ice_extent, surr_rain[,  -->
+<!--         i]), E = 2, lib_column = 1, target_column = 2, lib_sizes = NROW(sidf),  -->
+<!--         replace = FALSE, silent = TRUE)$rho -->
+
+<!--     ccm_rho_surr$snowfall[i] <- ccm(cbind(sidf$sea_ice_extent, surr_snow[,  -->
+<!--         i]), E = 6, lib_column = 1, target_column = 2, lib_sizes = NROW(sidf),  -->
+<!--         replace = FALSE, silent = TRUE)$rho -->
+
+<!-- } -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- (sum(ccm_rho_matrix['sea_ice_extent', 'rainfall'] < ccm_rho_surr$rain) + 1) / -->
+<!--     (length(ccm_rho_surr$rain) + 1) -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- (sum(ccm_rho_matrix['sea_ice_extent', 'snowfall'] < ccm_rho_surr$snow) + 1) / -->
+<!--     (length(ccm_rho_surr$snow) + 1) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- num_surr <- 50 -->
+<!-- surr_humidity <- make_surrogate_data(sidf$specific_humidity, method = "seasonal",  -->
+<!--     T_period = 12, num_surr = num_surr) -->
+<!-- surr_press <- make_surrogate_data(sidf$surface_pressure, method = "seasonal",  -->
+<!--     T_period = 12, num_surr = num_surr) -->
+
+<!-- ccm_rho_surr <- data.frame(humidity = numeric(num_surr), pressure = numeric(num_surr)) -->
+
+<!-- for (i in 1:num_surr) { -->
+<!--   ccm_rho_surr$specific_humidity[i] <- ccm(cbind(sidf$sea_ice_extent, surr_humidity[,  -->
+<!--         i]), E = 2, lib_column = 1, target_column = 2, lib_sizes = NROW(sidf),  -->
+<!--         replace = FALSE, silent = TRUE)$rho -->
+
+<!--     ccm_rho_surr$surface_pressure[i] <- ccm(cbind(sidf$sea_ice_extent, surr_press[,  -->
+<!--         i]), E = 8, lib_column = 1, target_column = 2, lib_sizes = NROW(sidf),  -->
+<!--         replace = FALSE, silent = TRUE)$rho -->
+<!-- } -->
+
+<!-- ``` -->
+
+
+
+<!-- ```{r} -->
+<!-- (sum(ccm_rho_matrix['sea_ice_extent', 'specific_humidity'] < ccm_rho_surr$humidity) + 1) / -->
+<!--     (length(ccm_rho_surr$humidity) + 1) -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- (sum(ccm_rho_matrix['sea_ice_extent', 'surface_pressure'] < ccm_rho_surr$pressure) + 1) / -->
+<!--     (length(ccm_rho_surr$pressure) + 1) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- num_surr <- 100 -->
+<!-- surr_humidity <- make_surrogate_data(sidf, method = "seasonal",  -->
+<!--     T_period = 12, num_surr = num_surr) -->
+<!-- surr_press <- make_surrogate_data(sidf, method = "seasonal",  -->
+<!--     T_period = 12, num_surr = num_surr) -->
+
+<!-- ccm_rho_surr <- data.frame(humidity = numeric(num_surr), pressure = numeric(num_surr)) -->
+
+<!-- for (i in 1:num_surr) { -->
+<!--   ccm_rho_surr$specific_humidity[i] <- ccm(cbind(sidf$sea_ice_extent, surr_humidity[,  -->
+<!--         i]), E = 10, lib_column = 1, target_column = 2, lib_sizes = NROW(sidf),  -->
+<!--         replace = FALSE, silent = TRUE)$rho -->
+
+<!--     ccm_rho_surr$surface_pressure[i] <- ccm(cbind(sidf$sea_ice_extent, surr_press[,  -->
+<!--         i]), E = 10, lib_column = 1, target_column = 2, lib_sizes = NROW(sidf),  -->
+<!--         replace = FALSE, silent = TRUE)$rho -->
+<!-- } -->
+
+<!-- ``` -->
+
+
+
+<!-- ```{r} -->
+<!-- (sum(ccm_rho_matrix['sea_ice_extent', 'LW_down'] < ccm_rho_surr$humidity) + 1) / -->
+<!--     (length(ccm_rho_surr$humidity) + 1) -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- (sum(ccm_rho_matrix['sea_ice_extent', 'SW_down'] < ccm_rho_surr$pressure) + 1) / -->
+<!--     (length(ccm_rho_surr$pressure) + 1) -->
+<!-- ``` -->
+
